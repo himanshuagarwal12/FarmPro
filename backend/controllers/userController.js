@@ -1,6 +1,9 @@
 import asyncHandler from 'express-async-handler'
 import generateToken from '../utils/generateToken.js'
 import User from '../models/userModel.js'
+import jwt from 'jsonwebtoken';
+import sendEmail from '../utils/sendEmail.js';
+
 
 // @desc    Auth user & get token
 // @route   POST /api/users/login
@@ -9,7 +12,6 @@ const authUser = asyncHandler(async (req, res) => {
   const { email, password } = req.body
 
   const user = await User.findOne({ email })
-
   if (user && (await user.matchPassword(password))) {
     res.json({
       _id: user._id,
@@ -40,9 +42,33 @@ const registerUser = asyncHandler(async (req, res) => {
   const user = await User.create({
     name,
     email,
+    // image: req.file.path,
     password,
   })
+  jwt.sign(
+    {id:user._id },
+    process.env.JWT_SECRET,
+    {
+      expiresIn: '1d',
+    },
+    (err, emailToken) => {
+      const url = `${req.protocol}://${req.get('host')}/api/users/confirmation/${emailToken}`;
 
+      const message = `Please click this email to confirm your email: <a href="${url}">${url}</a>`;
+  
+        try {
+          sendEmail({
+            email: user.email,
+            subject: 'Confirm Email',
+            text:message,
+          });
+      
+          res.status(200).json({ success: true, data: 'Email sent' });
+        } catch (err) {
+          console.log(err);
+        }
+    },
+  );
   if (user) {
     res.status(201).json({
       _id: user._id,
@@ -51,6 +77,7 @@ const registerUser = asyncHandler(async (req, res) => {
       isAdmin: user.isAdmin,
       token: generateToken(user._id),
     })
+    
   } else {
     res.status(400)
     throw new Error('Invalid user data')
